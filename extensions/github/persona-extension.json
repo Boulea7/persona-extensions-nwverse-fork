@@ -1,0 +1,116 @@
+{
+  "manifest_version": 1,
+  "id": "github",
+  "name": "GitHub",
+  "version": "0.4.20",
+  "description": "GitHub 进 Persona：收件箱里是请你 review、@ 你、指派给你、你的 PR / issue 有了新评论或 review、CI 失败；和你有关的 PR、issue 归档进知识库；助手能搜、读 PR / issue、看改动和 CI，评论和 review 先在手机上确认。登录用你某台电脑上的 gh 登录或设备码登录，token 加密存在 hub 的数据库里。侧边栏的「GitHub」页：待你 review 的 PR、你的 PR 和 CI、指派 / 提到你的、通知和关注的动态、你的仓库（浏览代码、分支、README），PR 的改动文件、逐文件 diff 和行内评论、全部评论、CI 日志摘要，在这一页上评论、review、合并（先预览、确认后才发）。",
+  "publisher": "nwverse",
+  "homepage": "https://github.com/nwverse/persona-extensions/tree/main/extensions/github",
+  "tags": ["开发", "收件箱", "知识库"],
+  "engines": {
+    "persona": ">=202611051346",
+    "extension_protocol": 1
+  },
+  "runtime": {
+    "command": {
+      "linux-amd64": "bin/github-linux-amd64",
+      "linux-arm64": "bin/github-linux-arm64",
+      "darwin-arm64": "bin/github-darwin-arm64",
+      "darwin-amd64": "bin/github-darwin-amd64"
+    }
+  },
+  "contributes": {
+    "connectors": [
+      {
+        "id": "github",
+        "name": "GitHub",
+        "capabilities": ["status", "tools", "actions", "events", "inbox", "settle", "archive", "login", "options", "threads", "machines", "fallback"],
+        "hosts": ["github.com"],
+        "kinds": ["review_requested", "mention", "team_mention", "assign", "author", "ci_failed"],
+        "kind_descriptions": {
+          "assign": "GitHub 上有 issue / PR 分配给了用户",
+          "author": "用户自己的 PR / issue 有了别人的新评论或 review；要用户改代码、回答问题时需要用户，LGTM、批准、机器人消息知悉即可",
+          "ci_failed": "用户触发的 GitHub Actions（CI）失败了",
+          "mention": "GitHub 的 PR / issue 里 @ 了用户",
+          "review_requested": "GitHub 上有人请用户 review 一个 PR（用户在 reviewers 里），一般需要用户",
+          "team_mention": "GitHub 上 @ 了用户所在的团队（不是用户本人），多数知悉即可"
+        }
+      }
+    ],
+    "ui": [
+      {"id": "github", "title": "GitHub", "placement": "nav_page", "icon": "list"}
+    ]
+  },
+  "configuration": {
+    "type": "object",
+    "properties": {
+      "triage_rules": {
+        "type": "string",
+        "title": "分拣规则",
+        "maxLength": 4000,
+        "description": "GitHub的条目按什么分「需要你 / 知悉即可 / 噪音」，用你自己的话写；填了就只用它、不用收件箱的全局规则（只管GitHub）。一般不在这里改：和助手说（比如「机器人的 PR 都算噪音」），它来改。写 \\n 换行；空着用全局规则"
+      },
+      "inbox": {
+        "type": "object",
+        "title": "收件箱",
+        "description": "哪些 GitHub 通知进收件箱。改了以后只影响之后新来的：已经在收件箱里的条目不删、不改；不进收件箱的也不会推送。GitHub 页面、助手的 GitHub 工具照常能看所有仓库。整个 GitHub 都不进收件箱：关掉 GitHub 连接器的「进收件箱」（这一页上，或 设置 › 连接器 › GitHub）",
+        "properties": {
+          "repos": {
+            "type": "array",
+            "title": "只收这些仓库",
+            "description": "写 owner/name，或 owner/* 表示这个人或组织的全部仓库，不分大小写。空着收全部仓库",
+            "maxItems": 200,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+$", "maxLength": 200}
+          },
+          "exclude_repos": {
+            "type": "array",
+            "title": "不收这些仓库",
+            "description": "写法同上（owner/name 或 owner/*），在「只收这些仓库」之后再排除",
+            "maxItems": 200,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+$", "maxLength": 200}
+          },
+          "skip_kinds": {
+            "type": "array",
+            "title": "不收这些类型",
+            "description": "选中的类型不进收件箱。只想让它们排得低一点、不挡掉，写在上面的分拣规则里（比如「@ 团队的都算知悉」）；CI 失败只想少收一些（只看默认分支、只看自己的 PR），在 设置 › 连接器 › GitHub 的「CI 失败」里选",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "oneOf": [
+                {"const": "review_requested", "title": "请你 review"},
+                {"const": "mention", "title": "@我"},
+                {"const": "team_mention", "title": "@了你的团队"},
+                {"const": "assign", "title": "分配给你"},
+                {"const": "author", "title": "你的 PR / issue 有新动静"},
+                {"const": "ci_failed", "title": "CI 失败"}
+              ]
+            }
+          }
+        }
+      },
+      "host": {
+        "type": "string",
+        "title": "GitHub 主机",
+        "default": "github.com",
+        "description": "一般不用改。GitHub Enterprise 的主机名写在这里（还没做完：现在只认 github.com）"
+      },
+      "proxy": {
+        "type": "string",
+        "title": "代理",
+        "description": "hub 这台机器连不上 GitHub 时填一个 http:// 代理（http://[用户名:密码@]主机:端口），登录、API、CI 日志都走它；填错了每个请求都失败，不会绕过它直连。空着直连"
+      }
+    }
+  },
+  "permissions": {
+    "network": [
+      "github.com",
+      "api.github.com",
+      "avatars.githubusercontent.com",
+      "*.actions.githubusercontent.com",
+      "*.blob.core.windows.net"
+    ],
+    "gh_login": true
+  }
+}

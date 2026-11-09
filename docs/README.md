@@ -1,0 +1,38 @@
+# Documentation
+
+[Project overview](../README.md) · [Contributing](../CONTRIBUTING.md)
+
+## Using extensions
+
+- [Installation](installation.md): register the public market, install local packages and handle older hubs.
+- [GitHub](extensions/github.md): the inbox, knowledge-base archive, assistant tools and sign-in of the GitHub connector (moved out of the hub), and a GitHub page: what needs you, repositories and their code, and PR / issue review.
+- [Home Assistant](extensions/homeassistant.md): areas, devices, controls and history from your own Home Assistant; the logbook, statistics and energy, automations, calls by area, speakers, cameras, watch rules that notify or wake the assistant, confirmed assistant writes, writable domains and the sandbox.
+- [Hacker News](extensions/hackernews.md): public Top, New, Best, Ask HN and Show HN stories, top-level comments, filtering, the localized app view and assistant tools.
+- [Termwise](extensions/termwise.md): a reading page with translation mode and vocabulary mode. Vocabulary mode underlines candidate words; choosing one shows the gloss and can remember it.
+- [LINUX DO](extensions/linuxdo.md): public topics, filtering, request limits and the app view.
+- [Sentry](extensions/sentry.md): the errors and crashes of the hub, the web and the apps, scrubbed by the hub, sent to your Sentry project; events, settings, limits and network.
+- [V2EX](extensions/v2ex.md): public hot, latest and followed-node topics, filtering, request limits and the app view.
+- [Feishu Sidebar](extensions/feishu-sidebar.md): open the user's Persona web from a Feishu sidebar through a built applink (no Feishu app, no requests, no credentials), and an assistant tool for the same link.
+- [RSSHub](extensions/rsshub.md): subscribe to RSSHub routes or any RSS, Atom or JSON feed on the public or your own instance (with its access key); the navigation page with unread entries, tags and route previews, the background refresh with ETag caching, assistant tools with confirmed subscription changes, and the sandbox.
+- [Weather](extensions/weather.md): Open-Meteo's current weather, next-24-hours line, 7-day forecast and air quality on the main navigation, with assistant tools, no key needed.
+- [Markets](extensions/markets.md): cryptocurrency (OKX) and A-share, Hong Kong and US stock (Tencent) watchlist on the main navigation, price and volume charts, assistant tools and rate limits.
+- [Telegram](extensions/telegram.md): login, inbox, archives, network requirements, tools and the `tg` CLI.
+- [Discord](extensions/discord.md): your own bot as a read-only source: setting it up, what goes into the knowledge base and how nothing is skipped, the assistant tools, status, network and the sandbox.
+- [X](extensions/x.md): two optional ways in: the official X API with your own developer app (mentions in the inbox, a daily-budgeted digest of your timeline or lists, cost and X's terms), or the `grok` CLI on the hub signed in with a SuperGrok or X Premium+ subscription (searches chosen accounts and topics, no X keys); read-only assistant tools and retention.
+- [Bypass auto-allow (Claude Code)](extensions/agent-bypass-allow.md): auto-allow Claude Code's remaining Bash, read-only and subagent prompts in bypassPermissions sessions on chosen computers; deletion and overwriting ask unless inside temporary or work directories (or a setting allows them all); force pushes, permission changes and your own ask/deny rules still ask; audit log and limits.
+- [mnemo](../extensions/mnemo/README.md): let the Claude assistant search past coding-agent sessions through mnemo's MCP server, when mnemo is installed on its computer; read-only tools only.
+
+## Developing and maintaining extensions
+
+- [Development](development.md): repository layout, adding an extension, local checks and packaging.
+- [Reference](reference.md): manifests, configuration, process protocol, SDK ownership and compatibility.
+- [Releases and signing](releases.md): release automation, index format, verification and key management.
+
+This repository documents its public extensions and build/release workflow. The [local reference](reference.md) links to the published SDK contracts and schemas; it does not rely on access to the host implementation repository.
+
+## Example extensions
+
+- [Showcase](extensions/showcase.md): a local-only component catalog, widget and shortcut examples, view snapshots and older-app fallbacks.
+- [Starter kit and starter pack](extensions/starter-kit.md): runtime-free skills, assistant instructions, quick prompts, triage templates and a theme; a pack that installs starter-kit and LINUX DO together. These require a hub with declarative-contribution support (`engines.persona >=202611042338`).
+
+These examples are available in `main` and the market. Keep both project READMEs and this index aligned when adding extensions.

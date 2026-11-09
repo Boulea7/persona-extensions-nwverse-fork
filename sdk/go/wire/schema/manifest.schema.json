@@ -1,0 +1,665 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest.schema.json",
+  "title": "Extension manifest",
+  "description": "persona-extension.json (read as persona-plugin.json before the rename, #1844) at the root of an extension's package. The hub reads it strictly: a field it does not know anywhere fails the install. Rules a schema cannot say (a gate file inside the package, ids unique across extensions, version ranges) stay the hub's.",
+  "$ref": "#/$defs/Manifest",
+  "$defs": {
+    "ID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"},
+    "Host": {
+      "description": "A host name, lowercase, no scheme, port or path; *. may start it.",
+      "type": "string", "maxLength": 253,
+      "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "ActivationEvent": {"type": "string", "enum": ["on_startup", "on_call", "on_http"]},
+    "Manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "manifest_version": {"type": "integer", "const": 1},
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40},
+        "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"},
+        "description": {"type": "string"},
+        "publisher": {"type": "string"},
+        "homepage": {"type": "string", "pattern": "^https://[^/?#]+"},
+        "tags": {
+          "description": "What the market shows and searches (docs \"Extension market\"): at most 16, each 1 to 24 characters. Packages and indexes carry the manifest without them (hubs before tags refuse an unknown field); the index entry carries them instead.",
+          "type": "array", "maxItems": 16, "items": {"type": "string", "minLength": 1, "maxLength": 24}
+        },
+        "engines": {"$ref": "#/$defs/Engines"},
+        "runtime": {"$ref": "#/$defs/Runtime"},
+        "node": {"$ref": "#/$defs/NodeRuntime"},
+        "activation_events": {"type": "array", "items": {"$ref": "#/$defs/ActivationEvent"}},
+        "contributes": {"$ref": "#/$defs/Contributes"},
+        "off_by_default": {"description": "Contributions (\"<point>/<id>\") that start switched off: at install, and at an upgrade the ones the version before did not have (docs \"Contribution switches\"). Not a connector or a channel bound to one (their switch is the connector's). Hubs before it refuse the manifest.", "type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9_.-]+/[a-z0-9][a-z0-9_-]*$"}},
+        "depends": {
+          "description": "Extensions it needs installed and on (docs \"Dependencies\"): while one is missing, off or too old it waits in needs_setup.",
+          "type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/Dependency"}
+        },
+        "exports": {"$ref": "#/$defs/Exports"},
+        "extension_pack": {
+          "description": "An extension pack (docs \"Extension packs\"): installing it installs these. A pack has no runtime and no contributes of its own.",
+          "type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/PackMember"}
+        },
+        "configuration": {"description": "The configuration's JSON Schema, in the subset every app draws as a form (docs \"Configuration: the form subset\")."},
+        "secrets": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/SecretSpec"}},
+        "permissions": {"$ref": "#/$defs/Permissions"},
+        "tools": {
+          "description": "Command-line programs the hub installs into the extension's own directory and puts first on its PATH (docs \"Command-line programs (tools)\", #4507). Installing them is a permission. Hubs before them refuse the manifest.",
+          "type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/ToolSpec"}
+        },
+        "auth": {"$ref": "#/$defs/AuthSpec"}
+      },
+      "required": ["manifest_version", "id", "name", "version"]
+    },
+    "ToolSpec": {
+      "description": "One command-line program. Exactly one of archive and npm.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$", "description": "The command put on PATH."},
+        "title": {"type": "string"},
+        "version": {"type": "string", "minLength": 1, "maxLength": 64, "description": "What is installed, for people."},
+        "requires": {"type": "array", "items": {"type": "string"}, "description": "Other tools of the manifest installed (and on PATH) first."},
+        "check": {"$ref": "#/$defs/ToolCheck"},
+        "archive": {"type": "object", "additionalProperties": {"$ref": "#/$defs/ToolArchive"}, "description": "By <GOOS>-<GOARCH>."},
+        "npm": {"$ref": "#/$defs/ToolNPM"}
+      },
+      "required": ["name", "version"]
+    },
+    "ToolCheck": {
+      "description": "A copy on the hub's PATH (outside the home directory) is used instead of installing one when <name> <args> prints a version (the first x.y.z) of at least min_version.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "args": {"type": "array", "maxItems": 8, "items": {"type": "string"}, "description": "Default --version."},
+        "min_version": {"type": "string", "pattern": "[0-9]+\\.[0-9]+\\.[0-9]+"}
+      }
+    },
+    "ToolArchive": {
+      "description": "A download: a .tar.gz, .tgz or .zip with the program at path, or the program itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "path": {"type": "string"},
+        "mirrors": {"type": "array", "maxItems": 4, "items": {"type": "string", "pattern": "^https://"}}
+      },
+      "required": ["url", "sha256"]
+    },
+    "ToolNPM": {
+      "description": "An npm package unpacked as published: no install scripts, no dependencies (a bundled package).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "package": {"type": "string"},
+        "version": {"type": "string"},
+        "integrity": {"type": "string", "pattern": "^sha(256|512)-"},
+        "registry": {"type": "string", "pattern": "^https://", "description": "Default https://registry.npmjs.org."},
+        "bin": {"type": "string", "description": "The key of package.json's bin; default the tool's name."}
+      },
+      "required": ["package", "version", "integrity"]
+    },
+    "AuthSpec": {
+      "description": "The extension signs in: its program answers auth.status, auth.step and auth.logout (docs \"Sign-in (auth)\").",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "description": {"type": "string"},
+        "page": {"type": "string", "description": "An extension_page (plugin_page) ui contribution: its own sign-in page for apps that do not know auth; apps that do leave it out of its pages."}
+      },
+      "required": ["title"]
+    },
+    "Dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "version": {"type": "string", "description": "A range of its versions: >=1.2.0, <2.0.0, or both with a space between."}
+      },
+      "required": ["id"]
+    },
+    "Exports": {
+      "description": "Extension points it opens to other extensions: they contribute under contributes[\"<this id>.<point id>\"] and depend on it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extension_points": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/ExportedPoint"}}
+      },
+      "required": ["extension_points"]
+    },
+    "ExportedPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "version": {"type": "integer", "minimum": 1},
+        "description": {"type": "string"},
+        "schema": {"description": "Each contribution's JSON Schema, in the configuration's subset (docs \"Configuration: the form subset\"); id is always there and required."}
+      },
+      "required": ["id", "version"]
+    },
+    "PackMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "market": {"type": "string", "description": "The address of the market it comes from (github:owner/repo, https://…), as the hub registered it; empty: the pack's own market, else the first registered market that has it."},
+        "version": {"type": "string", "description": "A range of its versions, as in depends."}
+      },
+      "required": ["id"]
+    },
+    "Engines": {
+      "description": "What the extension runs on. extension_protocol is plugin_protocol's new name; a hub reads either.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "persona": {"type": "string", "description": "A range of hub build numbers (\">=202611050000 <202701010000\")."},
+        "extension_protocol": {"type": "integer", "const": 1},
+        "plugin_protocol": {"type": "integer", "const": 1}
+      }
+    },
+    "Runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {"$ref": "#/$defs/Command"},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "rpc": {"type": "string", "enum": ["stdio", "none"]},
+        "http": {"type": "boolean"},
+        "resources": {"$ref": "#/$defs/Resources"}
+      },
+      "required": ["command"]
+    },
+    "Resources": {
+      "description": "The most a program may use when the hub runs it in a sandbox (docs/extensions.md \"Sandbox\"): memory in MB, CPU in percent of one core. Unset: 1024 MB, 100%.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memory_mb": {"type": "integer", "minimum": 64, "maximum": 8192},
+        "cpu_percent": {"type": "integer", "minimum": 10, "maximum": 800}
+      }
+    },
+    "Command": {
+      "description": "A path in the package, or one per platform ({\"linux-amd64\": \"bin/x\"}).",
+      "x-untagged": true,
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "object", "additionalProperties": {"type": "string"}}
+      ]
+    },
+    "NodeRuntime": {
+      "description": "The extension's program on computers (docs/extensions.md \"Programs running on computers\"): one per platform (darwin-* / linux-*), on the machines picked in the configuration field `machines` (an array of format machine, x-os the programs' systems).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {"$ref": "#/$defs/Command"},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "env": {"type": "object", "additionalProperties": {"type": "string"}},
+        "machines": {"type": "string", "minLength": 1},
+        "rpc": {"type": "string", "enum": ["stdio", "none"]},
+        "http": {"type": "boolean"},
+        "keep_running": {"type": "string", "enum": ["lease", "always"]},
+        "secrets": {"type": "array", "items": {"type": "string"}},
+        "permissions": {"$ref": "#/$defs/NodePermissions"}
+      },
+      "required": ["command", "machines"]
+    },
+    "NodePermissions": {
+      "description": "What the program on computers asks for there: hosts it reaches, files outside its data directory, macOS's privacy permissions.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {"type": "array", "items": {"$ref": "#/$defs/Host"}},
+        "files": {"type": "boolean"},
+        "macos_privacy": {"type": "boolean"}
+      }
+    },
+    "SecretSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "required": {"type": "boolean"}
+      },
+      "required": ["name", "title"]
+    },
+    "Permissions": {
+      "description": "A closed vocabulary: a permission the hub does not know fails the install.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {"type": "array", "items": {"$ref": "#/$defs/Host"}},
+        "hub_api": {"type": "boolean", "description": "The old way: the hub's full token. With hub scopes, the scopes win."},
+        "hub": {"type": "array", "description": "The scopes of the hub's API it calls: its token opens their routes only.",
+          "items": {"type": "string", "pattern": "^(kb\\.read|kb\\.write|inbox\\.read|inbox\\.write|agents\\.read|agents\\.control|machines\\.read|notify|assistant\\.ask|extensions\\.call:[a-z0-9][a-z0-9_-]{0,31})$"}},
+        "launcher_keys": {"type": "boolean"},
+        "gh_login": {"type": "boolean", "description": "It asks the hub for the GitHub token of a computer's gh login (the one the user picks for the GitHub connector), held in its memory only."},
+        "usage_gateways": {"type": "boolean", "description": "It reads the account list of the account-pool gateways in the hub's usage sources (usage.gateway_accounts): accounts, status and quota windows, never a key."},
+        "agent_runtimes": {"type": "boolean", "description": "Its program is an agent runtime that connects to this machine's node; in a sandbox it gets a socket in its run directory (PERSONA_RUNTIME_SOCKET) that leads to the node's runtime.sock only. Needs runtime."},
+        "error_reports": {"type": "boolean", "description": "It receives the error and crash reports of the hub and the user's devices, scrubbed (no message text, tokens, user names, machine names or IP addresses). Needed by contributes.error_reports."}
+      }
+    },
+    "Contributes": {
+      "description": "Contributions by extension point. A point this hub does not know installs with a warning, not taking effect.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true,
+      "properties": {
+        "connectors": {"type": "array", "items": {"$ref": "#/$defs/ConnectorItem"}},
+        "voice": {"type": "array", "items": {"$ref": "#/$defs/NamedItem"}},
+        "computer": {"type": "array", "items": {"$ref": "#/$defs/NamedItem"}},
+        "browser": {"type": "array", "items": {"$ref": "#/$defs/NamedItem"}},
+        "quota": {"type": "array", "items": {"$ref": "#/$defs/QuotaItem"}},
+        "providers": {"type": "array", "items": {"$ref": "#/$defs/ProviderItem"}},
+        "api": {"type": "array", "items": {"$ref": "#/$defs/APIItem"}},
+        "assistant": {"type": "array", "items": {"$ref": "#/$defs/AssistantItem"}},
+        "mcp_servers": {"type": "array", "items": {"$ref": "#/$defs/MCPServerItem"}},
+        "ui": {"type": "array", "items": {"$ref": "#/$defs/UIItem"}},
+        "agent_sources": {"type": "array", "items": {"$ref": "#/$defs/AgentSourceItem"}},
+        "channel": {"type": "array", "items": {"$ref": "#/$defs/ChannelItem"}},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/EventsItem"}},
+        "shortcuts": {"type": "array", "items": {"$ref": "#/$defs/ShortcutItem"}},
+        "skills": {"type": "array", "items": {"$ref": "#/$defs/SkillItem"}},
+        "prompts": {"type": "array", "items": {"$ref": "#/$defs/PromptItem"}},
+        "themes": {"type": "array", "items": {"$ref": "#/$defs/ThemeItem"}},
+        "looks": {"type": "array", "items": {"$ref": "#/$defs/LookItem"}},
+        "triage_templates": {"type": "array", "items": {"$ref": "#/$defs/TriageTemplateItem"}},
+        "agent_filters": {"type": "array", "items": {"$ref": "#/$defs/AgentFilterItem"}},
+        "tunnels": {"type": "array", "items": {"$ref": "#/$defs/TunnelItem"}},
+        "error_reports": {"type": "array", "items": {"$ref": "#/$defs/ErrorReportsItem"}},
+        "messaging": {"type": "array", "items": {"$ref": "messaging.schema.json#/$defs/MessagingItem"}}
+      }
+    },
+    "SkillItem": {
+      "description": "A skill (docs \"Declarative contributions\"): a directory of the package with SKILL.md, put in with the assistant's skills.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "dir": {"type": "string", "description": "The directory, relative to the package."}
+      },
+      "required": ["id", "dir"]
+    },
+    "PromptKind": {"type": "string", "enum": ["instructions", "quick"]},
+    "PromptItem": {
+      "description": "A prompt: instructions (a .md of the package added to the assistant's CLAUDE.md) or quick (a template the apps offer in the message box).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "kind": {"$ref": "#/$defs/PromptKind"},
+        "file": {"type": "string", "description": "instructions: the .md file."},
+        "title": {"type": "string", "maxLength": 40, "description": "quick: what the apps show."},
+        "text": {"type": "string", "maxLength": 4000, "description": "quick: what goes into the message box."}
+      },
+      "required": ["id", "kind"]
+    },
+    "ThemeColors": {
+      "description": "A scheme's role colors, #RRGGBB: accent (required), positive, caution, danger, ai.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {"$ref": "#/$defs/HexColor"},
+        "positive": {"$ref": "#/$defs/HexColor"},
+        "caution": {"$ref": "#/$defs/HexColor"},
+        "danger": {"$ref": "#/$defs/HexColor"},
+        "ai": {"$ref": "#/$defs/HexColor"}
+      },
+      "required": ["accent"]
+    },
+    "HexColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "ThemeItem": {
+      "description": "A theme (Theme Color): the design system's role colors for light and dark; the apps check the contrast and do not offer one that fails.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 20},
+        "light": {"$ref": "#/$defs/ThemeColors"},
+        "dark": {"$ref": "#/$defs/ThemeColors"}
+      },
+      "required": ["id", "name", "light", "dark"]
+    },
+    "LookID": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$", "description": "A look's id: also a persona package's (the apps cache by it)."},
+    "BuiltinLook": {"type": "string", "enum": ["persona", "jarvis", "jarvis-circuit"], "description": "A look every app draws itself: Mochi (the default), Visor, Circuit."},
+    "LookTexts": {
+      "description": "A text in the other languages, by code (docs/i18n.md): only zh-Hans, en and ja, each 1 to 40 characters (the hub checks).",
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 40}
+    },
+    "LookAvatarDark": {
+      "description": "The face on dark backgrounds; what it leaves out is the light one's.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sizes": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Side in pixels → a square PNG of the package."},
+        "svg": {"type": "string", "description": "An SVG of the package (the hub cleans it)."}
+      }
+    },
+    "LookAvatar": {
+      "description": "The face: square PNGs by their side in pixels (16 to 1024, at least one), an SVG, and the same for dark mode.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sizes": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Side in pixels → a square PNG of the package."},
+        "svg": {"type": "string", "description": "An SVG of the package (the hub cleans it: no scripts, nothing from outside it)."},
+        "safe": {"type": "number", "minimum": 0, "maximum": 1, "description": "The share of the circle what matters stays inside."},
+        "dark": {"$ref": "#/$defs/LookAvatarDark"}
+      },
+      "required": ["sizes"]
+    },
+    "LookPalette": {
+      "description": "An appearance's colors, #RRGGBB (docs/persona.md \"Palettes\", the apps' PersonaPalette).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primary": {"$ref": "#/$defs/HexColor"},
+        "secondary": {"$ref": "#/$defs/HexColor"},
+        "accent": {"$ref": "#/$defs/HexColor"},
+        "bubble": {"$ref": "#/$defs/HexColor"},
+        "bubble_text": {"$ref": "#/$defs/HexColor"}
+      }
+    },
+    "LookColors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "light": {"$ref": "#/$defs/LookPalette"},
+        "dark": {"$ref": "#/$defs/LookPalette"}
+      }
+    },
+    "LookDotState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "description": "An APNG (or a still PNG) of the package."},
+        "fps": {"type": "number", "minimum": 0}
+      },
+      "required": ["file"]
+    },
+    "LookDotStates": {
+      "description": "The dot's states; idle is required.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "idle": {"$ref": "#/$defs/LookDotState"},
+        "thinking": {"$ref": "#/$defs/LookDotState"},
+        "working": {"$ref": "#/$defs/LookDotState"},
+        "needs_you": {"$ref": "#/$defs/LookDotState"},
+        "offline": {"$ref": "#/$defs/LookDotState"}
+      },
+      "required": ["idle"]
+    },
+    "LookDot": {
+      "description": "The animated dot in the Persona tab's top bar; without it the hub takes the largest avatar PNG as idle.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {"type": "integer", "minimum": 16, "maximum": 512, "description": "The frames' side in pixels."},
+        "states": {"$ref": "#/$defs/LookDotStates"}
+      },
+      "required": ["states"]
+    },
+    "LookItem": {
+      "description": "A look (docs/extensions.md \"Looks\"): Persona's name, face, colors and dot, served as a persona package. app_icon_fallback is the built-in icon used where only the app's own icons can be shown.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/LookID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 20},
+        "names": {"$ref": "#/$defs/LookTexts"},
+        "subtitle": {"type": "string", "maxLength": 40},
+        "subtitles": {"$ref": "#/$defs/LookTexts"},
+        "avatar": {"$ref": "#/$defs/LookAvatar"},
+        "colors": {"$ref": "#/$defs/LookColors"},
+        "dot": {"$ref": "#/$defs/LookDot"},
+        "app_icon_fallback": {"$ref": "#/$defs/BuiltinLook"}
+      },
+      "required": ["id", "name", "avatar", "app_icon_fallback"]
+    },
+    "TriageTemplateItem": {
+      "description": "A template of an inbox source's triage rules (triage_rules): settings offer it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000}
+      },
+      "required": ["id", "title", "text"]
+    },
+    "ErrorReportsItem": {
+      "description": "It is given the error and crash reports of the hub and the user's devices (error_reports.deliver): needs the program to speak the protocol, on_startup and permissions.error_reports.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "sources": {"type": "array", "description": "Only reports from these; omitted: all.", "minItems": 1, "uniqueItems": true,
+          "items": {"$ref": "protocol.schema.json#/$defs/ErrorSource"}}
+      },
+      "required": ["id"]
+    },
+    "TunnelItem": {
+      "description": "A tunnel the apps can reach this hub through when its own addresses do not answer (docs \"In-app tunnels\"): an in-app tunnel core built into the app, going to the configuration's target_host and target_port.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40}
+      },
+      "required": ["id", "name"]
+    },
+    "AgentFilterItem": {
+      "description": "Agent sessions kept out of Agents (docs \"Agent filters\"): a session goes when it is one of agents and any of the matchers fits it.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "maxLength": 40, "description": "What the extension's contributions list calls it."},
+        "when": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$", "description": "A boolean field of the configuration: the filter holds only while it is true, and that field is its only switch. Without it the filter holds while the extension is on."},
+        "agents": {"type": "array", "items": {"type": "string", "enum": ["claude", "codex"]}, "description": "Whose sessions: Claude Code, Codex; none: both."},
+        "originators": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 16, "description": "Codex: session_meta.originator of the rollout, exactly."},
+        "added_dirs": {"type": "array", "items": {"type": "string", "minLength": 2}, "maxItems": 16, "description": "Claude Code: a directory the session was given besides its own (additionalWorkingDirectories), this or under it; ~/ is the home directory."},
+        "first_message_prefixes": {"type": "array", "items": {"type": "string", "minLength": 8, "maxLength": 200}, "maxItems": 16, "description": "The first user message starts with one of these (leading blanks ignored): a fallback for sessions without a marker."}
+      },
+      "required": ["id"]
+    },
+    "ConnectorItem": {
+      "description": "The connector protocol's manifest (docs/connector-protocol.md).",
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+        "name": {"type": "string", "minLength": 1},
+        "capabilities": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "hosts": {"type": "array", "items": {"type": "string"}},
+        "agent_tools": {"type": "array", "items": {"type": "string"}},
+        "unlisted": {"type": "array", "items": {"type": "string"}},
+        "confirm_always": {"type": "array", "items": {"type": "string"}},
+        "poll_seconds": {"type": "integer", "minimum": 0},
+        "kinds": {"type": "array", "items": {"type": "string"}},
+        "kind_descriptions": {"type": "object", "additionalProperties": {"type": "string"}},
+        "archive_sources": {"type": "array", "maxItems": 4, "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"}},
+        "meta_description": {"type": "string", "maxLength": 4000},
+        "cli": {"type": "string"}
+      },
+      "required": ["id", "name", "capabilities"]
+    },
+    "NamedItem": {
+      "description": "A contribution with only an id and a name: voice, computer, browser.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string"}
+      },
+      "required": ["id"]
+    },
+    "QuotaItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "hosts": {"type": "array", "items": {"$ref": "#/$defs/Host"}}
+      },
+      "required": ["id", "name"]
+    },
+    "ProviderItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"},
+        "kind": {"type": "string", "enum": ["launcher", "api"]},
+        "api": {"type": "string", "enum": ["messages", "responses"]},
+        "base_url": {"type": "string", "pattern": "^https?://"},
+        "model": {"type": "string"},
+        "small_model": {"type": "string"},
+        "models": {"type": "array", "items": {"$ref": "#/$defs/ProviderModel"}},
+        "dynamic_models": {"type": "boolean"},
+        "key_hint": {"type": "string"}
+      },
+      "required": ["id", "name", "base_url"]
+    },
+    "ProviderModel": {
+      "type": "object",
+      "properties": {"id": {"type": "string", "minLength": 1}, "name": {"type": "string"}},
+      "required": ["id"]
+    },
+    "APIItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "prefix": {"$ref": "#/$defs/ID"},
+        "features": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}},
+        "events": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}},
+        "receipts": {"type": "array", "items": {"$ref": "#/$defs/APIReceipt"}}
+      },
+      "required": ["id", "prefix"]
+    },
+    "APIReceipt": {
+      "type": "object",
+      "properties": {
+        "method": {"type": "string", "enum": ["POST", "PUT", "PATCH", "DELETE"]},
+        "path": {"type": "string", "pattern": "^/"},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"}
+      },
+      "required": ["method", "path", "kind"]
+    },
+    "AssistantItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "instructions": {"type": "string"},
+        "gate": {"type": "string"}
+      },
+      "required": ["id"]
+    },
+    "MCPServerItem": {
+      "description": "An MCP server for the Claude assistant (docs \"MCP servers\"): a command line on the assistant's machine, its tools as mcp__<id>__<tool>. The command reads its own configuration; Persona adds nothing to its environment. Not a shell or an interpreter.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/ID", "description": "The server's name for the assistant; not jarvis or persona."},
+        "command": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$", "description": "Looked up on PATH, then in ~/bin."},
+        "env": {"type": "string", "pattern": "^PERSONA_[A-Z0-9_]{1,56}$", "description": "A PERSONA_ variable (JARVIS_ read too) that, when set, replaces the lookup: a path, or \"\" / 0 / off / false to leave the server out."},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "requires": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "Words `<command> --help` must print; otherwise the server is left out."},
+        "allow": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "description": "Tools that run without asking."},
+        "deny": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}, "description": "Tools never callable. Any other tool goes by the conversation's permission mode."}
+      },
+      "required": ["id", "command"]
+    },
+    "UIItem": {
+      "description": "A place in the apps the extension draws (docs \"UI slots\").",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "placement": {"$ref": "view.schema.json#/$defs/Placement"},
+        "hosts": {"type": "array", "items": {"$ref": "#/$defs/Host"}, "description": "launcher_section only."},
+        "icon": {"$ref": "view.schema.json#/$defs/NavIcon", "description": "nav_page only."},
+        "opens": {"type": "string", "description": "overview_card, capsule_card and widget only: a nav_page or extension_page of the same extension."},
+        "connector": {"type": "string", "description": "inbox_item only: one of the extension's own connectors."},
+        "families": {"type": "array", "minItems": 1, "items": {"$ref": "view.schema.json#/$defs/WidgetFamily"}, "description": "widget only (and needed there): the sizes it can be drawn at."},
+        "refresh_minutes": {"type": "integer", "minimum": 15, "maximum": 1440, "description": "widget only: how often the widget is drawn again on its own (30 when not said)."}
+      },
+      "required": ["id", "title", "placement"]
+    },
+    "AgentSourceItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "name": {"type": "string", "minLength": 1},
+        "providers": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"}}
+      },
+      "required": ["id", "name"]
+    },
+    "ChannelItem": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 40},
+        "kind": {"type": "string", "enum": ["im"]},
+        "connector": {"type": "string"},
+        "bind": {"type": "string", "enum": ["qr", "code", "fields"]},
+        "description": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/ChannelCapabilities"}
+      },
+      "required": ["id", "name", "kind", "capabilities"]
+    },
+    "ChannelCapabilities": {
+      "type": "object",
+      "properties": {
+        "images_in": {"type": "boolean"},
+        "files_in": {"type": "boolean"},
+        "voice_in": {"type": "boolean"},
+        "format": {"type": "string", "enum": ["markdown", "plain"]},
+        "max_text": {"type": "integer", "minimum": 0},
+        "asks": {"type": "string", "enum": ["none", "text", "buttons"]},
+        "push": {"type": "boolean"},
+        "typing": {"type": "boolean"},
+        "progress": {"type": "boolean"},
+        "threads": {"type": "boolean"}
+      }
+    },
+    "EventsItem": {
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "subscribe": {"type": "array", "minItems": 1, "items": {"type": "string", "enum": ["inbox.changed", "agent.needs_you", "agent.finished"]}}
+      },
+      "required": ["id", "subscribe"]
+    },
+    "ShortcutItem": {
+      "description": "An action of the extension the system runs (docs \"System placements\"): Shortcuts and Siri on iPhone, Mac and Apple Watch. The hub asks the extension shortcut.run with the values.",
+      "type": "object",
+      "properties": {
+        "id": {"$ref": "#/$defs/ID"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "description": {"type": "string", "maxLength": 200},
+        "params": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/ShortcutParam"}},
+        "ui": {"type": "string", "description": "A whole page of the same extension (nav_page or extension_page) the app opens to show more of the result."}
+      },
+      "required": ["id", "title"]
+    },
+    "ShortcutParam": {
+      "description": "A value the shortcut asks for; it reaches the extension as a string (a toggle's \"true\" / \"false\").",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40},
+        "kind": {"$ref": "#/$defs/ShortcutParamKind"},
+        "choices": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"$ref": "view.schema.json#/$defs/Choice"}, "description": "choice only."},
+        "required": {"type": "boolean"}
+      },
+      "required": ["name", "title", "kind"]
+    },
+    "ShortcutParamKind": {"type": "string", "enum": ["text", "number", "toggle", "choice"]}
+  }
+}
