@@ -1,0 +1,43 @@
+{
+  "manifest_version": 1,
+  "id": "nextcloud",
+  "name": "Nextcloud 文件",
+  "version": "0.1.0",
+  "description": "在 Persona 中搜索 Nextcloud 个人文件，查看文件元数据、阅读有大小上限的文本文件，确认后新建 Markdown 笔记且绝不覆盖已有文件。应用密码加密保存在 hub；远程实例要求 HTTPS，不删除、移动、分享或修改已有文件。",
+  "publisher": "nwverse",
+  "homepage": "https://github.com/nwverse/persona-extensions/blob/main/extensions/nextcloud/README.md",
+  "tags": ["Nextcloud", "文件", "笔记", "自托管"],
+  "engines": {"plugin_protocol": 1},
+  "runtime": {
+    "command": {
+      "linux-amd64": "bin/nextcloud-linux-amd64",
+      "linux-arm64": "bin/nextcloud-linux-arm64",
+      "darwin-arm64": "bin/nextcloud-darwin-arm64",
+      "darwin-amd64": "bin/nextcloud-darwin-amd64"
+    }
+  },
+  "contributes": {
+    "connectors": [{
+      "id": "nextcloud", "name": "Nextcloud", "capabilities": ["status", "tools", "actions"],
+      "hosts": [], "agent_tools": ["nextcloud_*"],
+      "confirm_always": ["nextcloud_create_note"]
+    }],
+    "ui": [{"id": "files", "title": "Nextcloud 文件", "placement": "nav_page", "icon": "doc"}]
+  },
+  "configuration": {
+    "type": "object",
+    "properties": {
+      "instance_url": {"type": "string", "title": "Nextcloud 实例地址", "description": "例如 https://cloud.example.com；仅本机允许 HTTP", "format": "uri"}
+    }
+  },
+  "secrets": [{
+    "name": "username", "title": "Nextcloud 用户名",
+    "description": "用于 WebDAV Basic Auth 的用户名",
+    "required": true
+  }, {
+    "name": "app_password", "title": "Nextcloud 应用密码",
+    "description": "在个人安全设置创建的应用密码，不是普通账号密码；仅作为 Basic Auth 发往配置的实例",
+    "required": true
+  }],
+  "permissions": {"network": []}
+}
