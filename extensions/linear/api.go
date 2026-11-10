@@ -125,7 +125,9 @@ func (c *client) issue(ctx context.Context, id string) (issue, error) {
 	return *out.Issue, err
 }
 
-const teamsQuery = `query Teams { teams(first: 100) { nodes { id key name states(first: 100) { nodes { id name type position } } } } }`
+// teamsQuery stays under Linear's 10,000-point limit for a single query: 100 teams with
+// up to 50 workflow states each cost 7,130 points, while 100 states per team cost 14,130.
+const teamsQuery = `query Teams { teams(first: 100) { nodes { id key name states(first: 50) { nodes { id name type position } } } } }`
 
 func (c *client) teams(ctx context.Context) ([]team, error) {
 	var out struct {
@@ -135,15 +137,16 @@ func (c *client) teams(ctx context.Context) ([]team, error) {
 	return out.Teams.Nodes, err
 }
 
+const createMutation = `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier title url } } }`
+
 func (c *client) create(ctx context.Context, input map[string]any) (issue, error) {
-	const mutation = `mutation Create($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier title url } } }`
 	var out struct {
 		Create struct {
 			Success bool  `json:"success"`
 			Issue   issue `json:"issue"`
 		} `json:"issueCreate"`
 	}
-	if err := c.call(ctx, mutation, map[string]any{"input": input}, &out); err != nil {
+	if err := c.call(ctx, createMutation, map[string]any{"input": input}, &out); err != nil {
 		return issue{}, err
 	}
 	if !out.Create.Success {
@@ -152,14 +155,15 @@ func (c *client) create(ctx context.Context, input map[string]any) (issue, error
 	return out.Create.Issue, nil
 }
 
+const updateMutation = `mutation Update($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`
+
 func (c *client) update(ctx context.Context, id string, input map[string]any) error {
-	const mutation = `mutation Update($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`
 	var out struct {
 		Update struct {
 			Success bool `json:"success"`
 		} `json:"issueUpdate"`
 	}
-	if err := c.call(ctx, mutation, map[string]any{"id": id, "input": input}, &out); err != nil {
+	if err := c.call(ctx, updateMutation, map[string]any{"id": id, "input": input}, &out); err != nil {
 		return err
 	}
 	if !out.Update.Success {
@@ -168,14 +172,15 @@ func (c *client) update(ctx context.Context, id string, input map[string]any) er
 	return nil
 }
 
+const commentMutation = `mutation Comment($input: CommentCreateInput!) { commentCreate(input: $input) { success } }`
+
 func (c *client) comment(ctx context.Context, id, body string) error {
-	const mutation = `mutation Comment($input: CommentCreateInput!) { commentCreate(input: $input) { success } }`
 	var out struct {
 		Comment struct {
 			Success bool `json:"success"`
 		} `json:"commentCreate"`
 	}
-	if err := c.call(ctx, mutation, map[string]any{"input": map[string]string{"issueId": id, "body": body}}, &out); err != nil {
+	if err := c.call(ctx, commentMutation, map[string]any{"input": map[string]string{"issueId": id, "body": body}}, &out); err != nil {
 		return err
 	}
 	if !out.Comment.Success {
