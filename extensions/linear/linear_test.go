@@ -140,7 +140,13 @@ func newFakeLinear(t *testing.T) *fakeLinear {
 		case strings.Contains(req.Query, "query Issue"):
 			fmt.Fprint(w, `{"data":{"issue":{"id":"issue-uuid-1","identifier":"ENG-123","title":"Review offline reading","description":"Keep article context and notes together.","priority":2,"url":"https://linear.app/example/issue/ENG-123","dueDate":"2026-11-15","createdAt":"2026-11-01T10:00:00Z","updatedAt":"2026-11-09T10:00:00Z","state":{"id":"state-started","name":"In Progress","type":"started"},"team":{"id":"team-eng","key":"ENG","name":"Engineering"},"assignee":{"id":"user-1","displayName":"Example User"},"comments":{"nodes":[{"id":"comment-1","body":"Please preserve the reading context.","createdAt":"2026-11-09T11:00:00Z","user":{"id":"user-2","displayName":"Reviewer"}}]}}}}`)
 		case strings.Contains(req.Query, "query Teams"):
-			fmt.Fprint(w, `{"data":{"teams":{"nodes":[{"id":"team-eng","key":"ENG","name":"Engineering","states":{"nodes":[{"id":"state-started","name":"In Progress","type":"started","position":1},{"id":"state-done","name":"Done","type":"completed","position":2}]}},{"id":"team-design","key":"DES","name":"Design","states":{"nodes":[{"id":"design-done","name":"Done","type":"completed","position":2}]}}]}}}`)
+			fmt.Fprint(w, `{"data":{"teams":{"nodes":[{"id":"team-eng","key":"ENG","name":"Engineering","states":{"nodes":[{"id":"state-started","name":"In Progress","type":"started","position":1},{"id":"state-done","name":"Done","type":"completed","position":2}],"pageInfo":{"hasNextPage":true,"endCursor":"eng-states-2"}}},{"id":"team-design","key":"DES","name":"Design","states":{"nodes":[{"id":"design-done","name":"Done","type":"completed","position":2}]}}]}}}`)
+		case strings.Contains(req.Query, "query TeamStates"):
+			if req.Variables["id"] != "team-eng" || req.Variables["after"] != "eng-states-2" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"errors": []map[string]string{{"message": "unexpected states page"}}})
+				return
+			}
+			fmt.Fprint(w, `{"data":{"team":{"states":{"nodes":[{"id":"state-late","name":"Late Review","type":"started","position":51}],"pageInfo":{"hasNextPage":false,"endCursor":"eng-states-3"}}}}}`)
 		case strings.Contains(req.Query, "mutation Create"):
 			fmt.Fprint(w, `{"data":{"issueCreate":{"success":true,"issue":{"id":"issue-new","identifier":"ENG-124","title":"New issue","url":"https://linear.app/example/issue/ENG-124"}}}}`)
 		case strings.Contains(req.Query, "mutation Update"):
@@ -196,12 +202,27 @@ func TestQueryComplexityMatchesLinearDocs(t *testing.T) {
 
 func TestQueriesStayUnderLinearComplexityLimit(t *testing.T) {
 	for name, doc := range map[string]string{
-		"assigned": assignedQuery, "issue": issueQuery, "teams": teamsQuery,
+		"assigned": assignedQuery, "issue": issueQuery, "teams": teamsQuery, "team states": teamStatesQuery,
 		"create": createMutation, "update": updateMutation, "comment": commentMutation,
 	} {
 		if cost, err := queryComplexity(doc); err != nil || cost > maxQueryComplexity {
 			t.Errorf("%s costs %d points (%v); Linear rejects more than %d", name, cost, err, maxQueryComplexity)
 		}
+	}
+}
+
+func TestTeamStatesPastFirstPage(t *testing.T) {
+	a := newFakeLinear(t).app()
+	text, err := a.callTool(t.Context(), "linear_teams", json.RawMessage(`{}`))
+	if err != nil || !strings.Contains(text, "state-late") || !strings.Contains(text, "state-done") {
+		t.Fatalf("%v %s", err, text)
+	}
+	teams, err := a.teamsRead(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validState(teams, "team-eng", "state-late"); err != nil {
+		t.Fatalf("a state on the second page was rejected: %v", err)
 	}
 }
 
